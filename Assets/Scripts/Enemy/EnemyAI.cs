@@ -1,5 +1,6 @@
 using EcosDeLaCripta.Combat;
 using EcosDeLaCripta.Core;
+using EcosDeLaCripta.Player;
 using UnityEngine;
 
 namespace EcosDeLaCripta.Enemy
@@ -48,6 +49,18 @@ namespace EcosDeLaCripta.Enemy
         [SerializeField] private Vector2 arenaMin;
         [SerializeField] private Vector2 arenaMax;
 
+        [Header("Ruta opcional de waypoints")]
+        [SerializeField] private Transform[] waypoints;
+        [SerializeField] private float waypointReachDistance = 0.55f;
+        [SerializeField] private bool alwaysFollowWaypoints;
+
+        [Header("Ataque predictivo opcional")]
+        [SerializeField] private bool predictiveRanged;
+        [SerializeField] private float predictiveProjectileSpeed = 11f;
+        [SerializeField] private float predictiveGravity = 9.8f;
+        [SerializeField] private float predictiveChargeDuration = 0.65f;
+        [SerializeField] private float predictiveCooldown = 3.2f;
+
         [Header("Audio")]
         [SerializeField] private AudioClip attackClip;
 
@@ -89,6 +102,25 @@ namespace EcosDeLaCripta.Enemy
             arenaMax = new Vector2(maxX, maxZ);
         }
 
+        public void ConfigureWaypoints(Transform[] route, bool routeOnly = false)
+        {
+            waypoints = route;
+            alwaysFollowWaypoints = routeOnly;
+            waypointIndex = 0;
+        }
+
+        public void ConfigurePredictiveRanged(EnemyBolt prefab, float range = 10f, float projectileSpeed = 11f, float gravity = 12f, float cooldown = 2.8f)
+        {
+            ranged = true;
+            predictiveRanged = true;
+            boltPrefab = prefab;
+            fireRange = range;
+            predictiveProjectileSpeed = projectileSpeed;
+            predictiveGravity = gravity;
+            predictiveCooldown = cooldown;
+            EnsureTrajectoryLine();
+        }
+
         public void ConfigureVariant(float speed, float force, int damage, int score, float detection, float attackDistance = 1.3f)
         {
             maxSpeed = speed;
@@ -112,6 +144,11 @@ namespace EcosDeLaCripta.Enemy
         private float attackTimer;
         private bool enraged;
         private float specialTimer = 3.5f;
+        private int waypointIndex;
+        private float predictiveTimer;
+        private float predictiveChargeTimer;
+        private bool predictiveCharging;
+        private LineRenderer trajectoryLine;
         private readonly Collider[] separationBuffer = new Collider[12];
         private float separationRefresh;
         private Vector3 cachedSeparation;
@@ -124,6 +161,7 @@ namespace EcosDeLaCripta.Enemy
             patrolCenter = transform.position;
             wanderAngle = Random.Range(0f, 360f);
             separationRefresh = Random.Range(0f, 0.12f);
+            EnsureTrajectoryLine();
         }
 
         private void Start()
@@ -143,8 +181,22 @@ namespace EcosDeLaCripta.Enemy
             float dt = Time.deltaTime;
             float dist = Vector3.Distance(transform.position, player.position);
 
-            if (State == EnemyState.Patrol && dist <= detectionRadius) State = EnemyState.Chase;
-            else if (State == EnemyState.Chase && dist >= loseRadius) State = EnemyState.Patrol;
+            bool routeOnly = alwaysFollowWaypoints && waypoints != null && waypoints.Length > 0;
+            if (!routeOnly)
+            {
+                if (State == EnemyState.Patrol && dist <= detectionRadius) State = EnemyState.Chase;
+                else if (State == EnemyState.Chase && dist >= loseRadius) State = EnemyState.Patrol;
+            }
+            else
+            {
+                State = EnemyState.Patrol;
+            }
+
+            if (predictiveCharging && State != EnemyState.Chase && !routeOnly)
+            {
+                predictiveCharging = false;
+                ClearTrajectory();
+            }
 
             Vector3 steer;
             if (State == EnemyState.Chase)
@@ -152,6 +204,14 @@ namespace EcosDeLaCripta.Enemy
                 if (ranged)
                 {
                     attackTimer -= dt;
+                    if (predictiveRanged)
+                    {
+                        steer = SteeringUtility.SeekArrive(transform.position, velocity, player.position,
+                            maxSpeed, maxForce, preferredDistance, out desired);
+                        UpdatePredictiveAttack(dist, dt);
+                        ApplyMovement(steer, dt);
+                        return;
+                    }
                     if (dist < preferredDistance * 0.72f)
                     {
                         Vector3 fleeTarget = transform.position + (transform.position - player.position).normalized * 3f;
@@ -187,12 +247,31 @@ namespace EcosDeLaCripta.Enemy
             }
             else
             {
-                steer = SteeringUtility.WanderImproved(transform.position, velocity, ref wanderAngle,
-                    wanderDistance, wanderRadius, wanderJitterDeg, dt, maxSpeed, maxForce, out desired, out wanderTarget);
+                if (waypoints != null && waypoints.Length > 0)
+                {
+                    Transform waypoint = waypoints[Mathf.Clamp(waypointIndex, 0, waypoints.Length - 1)];
+                    if (waypoint != null && Vector3.Distance(transform.position, waypoint.position) <= waypointReachDistance)
+                        waypointIndex = (waypointIndex + 1) % waypoints.Length;
 
-                // Correa suave hacia el centro de patrulla para no perderse en otras salas.
+                    waypoint = waypoints[Mathf.Clamp(waypointIndex, 0, waypoints.Length - 1)];
+                    Vector3 waypointTarget = waypoint != null ? waypoint.position : transform.position;
+                    steer = SteeringUtility.SeekArrive(transform.position, velocity, waypointTarget,
+                        maxSpeed, maxForce, slowRadius, out desired);
+                    wanderTarget = waypointTarget;
+                    if (routeOnly && predictiveRanged)
+                        UpdatePredictiveAttack(dist, dt);
+                }
+                else
+                {
+                    steer = SteeringUtility.WanderImproved(transform.position, velocity, ref wanderAngle,
+                        wanderDistance, wanderRadius, wanderJitterDeg, dt, maxSpeed, maxForce, out desired, out wanderTarget);
+                }
+
+                // La ruta ya está acotada por sus propios puntos y por la arena.
+                // La correa solo aplica al wander libre; si se usa sobre una ruta
+                // puede impedir que el agente alcance los puntos más alejados.
                 float leashDist = Vector3.Distance(transform.position, patrolCenter);
-                if (leashDist > patrolLeashRadius)
+                if (!routeOnly && leashDist > patrolLeashRadius)
                 {
                     steer += SteeringUtility.Seek(transform.position, velocity, patrolCenter, maxSpeed, maxForce) * 0.6f;
                 }
@@ -254,6 +333,165 @@ namespace EcosDeLaCripta.Enemy
 
         }
 
+        private void ApplyMovement(Vector3 steer, float dt)
+        {
+            separationRefresh -= dt;
+            if (separationRefresh <= 0f)
+            {
+                separationRefresh = 0.12f;
+                cachedSeparation = CalculateSeparation();
+            }
+            steer += cachedSeparation * 0.8f;
+            velocity = Vector3.ClampMagnitude(velocity + steer * dt, maxSpeed);
+            Vector3 delta = velocity * dt;
+            delta.y = -0.05f;
+            if (constrainToArena)
+            {
+                Vector3 next = transform.position + delta;
+                next.x = Mathf.Clamp(next.x, arenaMin.x, arenaMax.x);
+                next.z = Mathf.Clamp(next.z, arenaMin.y, arenaMax.y);
+                delta.x = next.x - transform.position.x;
+                delta.z = next.z - transform.position.z;
+            }
+            controller.Move(delta);
+            if (velocity.sqrMagnitude > 0.02f)
+                transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(velocity.normalized, Vector3.up), 10f * dt);
+            if (animator != null) animator.SetFloat("Speed", velocity.magnitude / Mathf.Max(0.01f, maxSpeed));
+        }
+
+        private void UpdatePredictiveAttack(float distance, float dt)
+        {
+            if (predictiveCharging)
+            {
+                predictiveChargeTimer -= dt;
+                DrawPredictiveTrajectory();
+                if (predictiveChargeTimer <= 0f)
+                {
+                    predictiveCharging = false;
+                    predictiveTimer = predictiveCooldown;
+                    FirePredictiveBolt();
+                    ClearTrajectory();
+                }
+                return;
+            }
+
+            predictiveTimer -= dt;
+            if (distance <= fireRange && predictiveTimer <= 0f)
+            {
+                predictiveCharging = true;
+                predictiveChargeTimer = predictiveChargeDuration;
+                if (animator != null) animator.SetTrigger("Attack");
+            }
+            else
+            {
+                ClearTrajectory();
+            }
+        }
+
+        private void FirePredictiveBolt()
+        {
+            if (boltPrefab == null || player == null) return;
+            Vector3 origin = transform.position + Vector3.up * 1.05f;
+            Vector3 launchVelocity;
+            CalculateBallisticVelocity(origin, out launchVelocity, out _);
+            EnemyBolt bolt = Instantiate(boltPrefab, origin, Quaternion.LookRotation(launchVelocity.normalized, Vector3.up));
+            bolt.LaunchBallistic(launchVelocity, attackDamage, predictiveGravity);
+            if (attackClip != null) AudioSource.PlayClipAtPoint(attackClip, transform.position, 0.45f);
+        }
+
+        private bool CalculateBallisticVelocity(Vector3 origin, out Vector3 launchVelocity, out float flightTime)
+        {
+            Vector3 target = GetPlayerAimPoint();
+            PlayerController playerController = player.GetComponent<PlayerController>();
+            Vector3 targetVelocity = playerController != null ? playerController.CurrentVelocity : Vector3.zero;
+            launchVelocity = Vector3.zero;
+            flightTime = 0.25f;
+            for (int iteration = 0; iteration < 3; iteration++)
+            {
+                target = GetPlayerAimPoint() + targetVelocity * flightTime;
+                if (!SolveBallisticVelocity(origin, target, out launchVelocity, out flightTime))
+                {
+                    Vector3 fallback = target - origin;
+                    launchVelocity = fallback.normalized * predictiveProjectileSpeed;
+                    flightTime = Mathf.Clamp(fallback.magnitude / Mathf.Max(1f, predictiveProjectileSpeed), 0.25f, 2f);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private bool SolveBallisticVelocity(Vector3 origin, Vector3 target, out Vector3 launchVelocity, out float flightTime)
+        {
+            Vector3 offset = target - origin;
+            Vector3 planar = Vector3.ProjectOnPlane(offset, Vector3.up);
+            float distance = planar.magnitude;
+            float speedSquared = predictiveProjectileSpeed * predictiveProjectileSpeed;
+            float discriminant = speedSquared * speedSquared - predictiveGravity *
+                (predictiveGravity * distance * distance + 2f * offset.y * speedSquared);
+
+            if (distance < 0.05f || discriminant < 0f)
+            {
+                launchVelocity = Vector3.zero;
+                flightTime = 0.25f;
+                return false;
+            }
+
+            // Solución de arco bajo: conserva la caída física, pero evita el arco
+            // excesivamente alto e inestable de la solución superior.
+            // El denominador correcto de la ecuación es gravedad * distancia.
+            float tanAngle = (speedSquared - Mathf.Sqrt(discriminant)) / (predictiveGravity * distance);
+            float cos = 1f / Mathf.Sqrt(1f + tanAngle * tanAngle);
+            float sin = tanAngle * cos;
+            launchVelocity = planar.normalized * (predictiveProjectileSpeed * cos) + Vector3.up * (predictiveProjectileSpeed * sin);
+            flightTime = distance / Mathf.Max(0.01f, predictiveProjectileSpeed * cos);
+            return true;
+        }
+
+        private Vector3 GetPlayerAimPoint()
+        {
+            Camera mainCamera = Camera.main;
+            CameraFollow cameraRig = mainCamera != null ? mainCamera.GetComponent<CameraFollow>() : null;
+            if (cameraRig != null && cameraRig.IsFirstPerson)
+                return mainCamera.transform.position;
+            return player.position + Vector3.up * 0.9f;
+        }
+
+        private void EnsureTrajectoryLine()
+        {
+            if (!predictiveRanged || trajectoryLine != null) return;
+            trajectoryLine = gameObject.GetComponent<LineRenderer>();
+            if (trajectoryLine == null) trajectoryLine = gameObject.AddComponent<LineRenderer>();
+            trajectoryLine.enabled = false;
+            trajectoryLine.useWorldSpace = true;
+            trajectoryLine.startWidth = 0.08f;
+            trajectoryLine.endWidth = 0.02f;
+            trajectoryLine.sharedMaterial = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            trajectoryLine.sharedMaterial.color = new Color(1f, 0.25f, 0.06f, 0.8f);
+        }
+
+        private void DrawPredictiveTrajectory()
+        {
+            if (trajectoryLine == null) return;
+            Vector3 origin = transform.position + Vector3.up * 1.05f;
+            CalculateBallisticVelocity(origin, out Vector3 launchVelocity, out float duration);
+            const int samples = 24;
+            duration = Mathf.Clamp(duration, 0.35f, 2.2f);
+            trajectoryLine.positionCount = samples;
+            trajectoryLine.enabled = true;
+            for (int i = 0; i < samples; i++)
+            {
+                float t = duration * i / (samples - 1f);
+                trajectoryLine.SetPosition(i, origin + launchVelocity * t + Vector3.down * (0.5f * predictiveGravity * t * t));
+            }
+        }
+
+        private void ClearTrajectory()
+        {
+            if (trajectoryLine == null) return;
+            trajectoryLine.enabled = false;
+            trajectoryLine.positionCount = 0;
+        }
+
         private void HandleDeath()
         {
             if (animator != null) animator.SetTrigger("Die");
@@ -265,7 +503,7 @@ namespace EcosDeLaCripta.Enemy
 
         private void HandleDamaged(int amount)
         {
-            if (!health.IsDead) State = EnemyState.Chase;
+            if (!health.IsDead && !alwaysFollowWaypoints) State = EnemyState.Chase;
         }
 
         private void FireBolt(Vector3 direction)

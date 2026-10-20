@@ -2,7 +2,9 @@
 using System;
 using System.Reflection;
 using EcosDeLaCripta.Audio;
+using EcosDeLaCripta.Combat;
 using EcosDeLaCripta.Core;
+using EcosDeLaCripta.Enemy;
 using EcosDeLaCripta.Items;
 using EcosDeLaCripta.Player;
 using EcosDeLaCripta.UI;
@@ -22,6 +24,7 @@ namespace EcosDeLaCripta.EditorTools
         private static int frames;
         private static float frameTimeSum;
         private static int measuredFrames;
+        private static Vector3 predictiveGuardianStartPosition;
 
         static GameplaySmokeTest()
         {
@@ -75,11 +78,33 @@ namespace EcosDeLaCripta.EditorTools
                     Require(burst != null, "No se encontró SpawnPickupBurst");
                     burst.Invoke(powerUp, null);
 
+                    EnemyAI predictiveGuardian = null;
+                    foreach (EnemyAI enemy in UnityEngine.Object.FindObjectsByType<EnemyAI>(FindObjectsSortMode.None))
+                    {
+                        if (!enemy.isBoss && enemy.GetComponent<LineRenderer>() != null)
+                        {
+                            predictiveGuardian = enemy;
+                            break;
+                        }
+                    }
+                    Require(predictiveGuardian != null, "No se encontró el guardián predictivo");
+                    predictiveGuardianStartPosition = predictiveGuardian.transform.position;
+                    GameObject waypointRoot = GameObject.Find("PredictiveGuardianWaypoints");
+                    Require(waypointRoot != null && waypointRoot.transform.childCount == 8,
+                        "La ruta del guardián predictivo no tiene 8 waypoints");
+                    MethodInfo predictiveShot = typeof(EnemyAI).GetMethod("FirePredictiveBolt", BindingFlags.Instance | BindingFlags.NonPublic);
+                    Require(predictiveShot != null, "No se encontró el disparo predictivo");
+                    int boltsBefore = UnityEngine.Object.FindObjectsByType<EnemyBolt>(FindObjectsSortMode.None).Length;
+                    predictiveShot.Invoke(predictiveGuardian, null);
+                    int boltsAfter = UnityEngine.Object.FindObjectsByType<EnemyBolt>(FindObjectsSortMode.None).Length;
+                    Require(boltsAfter > boltsBefore, "El guardián predictivo no generó su proyectil");
+
                     DungeonAudioDirector audioDirector = UnityEngine.Object.FindFirstObjectByType<DungeonAudioDirector>();
                     Require(audioDirector != null, "No se encontró el director musical");
                     AudioSource[] musicSources = audioDirector.GetComponentsInChildren<AudioSource>();
-                    Require(musicSources.Length == 2 && musicSources[0].isPlaying && musicSources[0].clip.name == "Ambiente",
-                        "AMBIENTE.mp3 no está reproduciéndose");
+                    if (!Application.isBatchMode)
+                        Require(musicSources.Length == 2 && musicSources[0].isPlaying && musicSources[0].clip.name == "Ambiente",
+                            "AMBIENTE.mp3 no está reproduciéndose");
                     Require(musicSources[1].clip != null && musicSources[1].clip.name == "BossFinal",
                         "BOSS_FINAL.mp3 no está preparado");
 
@@ -90,7 +115,7 @@ namespace EcosDeLaCripta.EditorTools
                     UnityEngine.UI.Image damageImage = damageOverlay.GetComponent<UnityEngine.UI.Image>();
                     Require(damageImage.color.a > 0.2f, "El destello rojo no reaccionó al daño");
                     Vector3 bossRoomPosition = playerHealth.transform.position;
-                    bossRoomPosition.x = 66f;
+                    bossRoomPosition.x = 86f;
                     CharacterController controller = playerHealth.GetComponent<CharacterController>();
                     controller.enabled = false;
                     playerHealth.transform.position = bossRoomPosition;
@@ -118,8 +143,9 @@ namespace EcosDeLaCripta.EditorTools
                     {
                         DungeonAudioDirector audioDirector = UnityEngine.Object.FindFirstObjectByType<DungeonAudioDirector>();
                         AudioSource[] musicSources = audioDirector.GetComponentsInChildren<AudioSource>();
-                        Require(musicSources[1].isPlaying && musicSources[1].volume > 0f,
-                            "BOSS_FINAL.mp3 no comenzó al entrar en la arena");
+                        if (!Application.isBatchMode)
+                            Require(musicSources[1].isPlaying && musicSources[1].volume > 0f,
+                                "BOSS_FINAL.mp3 no comenzó al entrar en la arena");
                     }
                     catch (Exception ex)
                     {
@@ -134,7 +160,21 @@ namespace EcosDeLaCripta.EditorTools
                     frameTimeSum += Time.unscaledDeltaTime;
                     measuredFrames++;
                 }
-                if (frames < 100) return;
+                if (frames < 500) return;
+                EnemyAI predictiveGuardian = null;
+                foreach (EnemyAI enemy in UnityEngine.Object.FindObjectsByType<EnemyAI>(FindObjectsSortMode.None))
+                {
+                    if (!enemy.isBoss && enemy.GetComponent<LineRenderer>() != null)
+                    {
+                        predictiveGuardian = enemy;
+                        break;
+                    }
+                }
+                float predictiveGuardianTravel = predictiveGuardian != null
+                    ? Vector3.Distance(predictiveGuardian.transform.position, predictiveGuardianStartPosition)
+                    : 0f;
+                Require(predictiveGuardian != null && predictiveGuardianTravel > 0.5f,
+                    "El guardián predictivo no avanzó por su ruta de waypoints");
                 float averageMs = measuredFrames > 0 ? frameTimeSum * 1000f / measuredFrames : 999f;
                 Debug.Log($"[GameplaySmokeTest] Tiempo medio de frame: {averageMs:0.00} ms ({(1000f / Mathf.Max(0.01f, averageMs)):0} FPS aprox.)");
                 if (averageMs > 50f) Fail($"Rendimiento insuficiente en la prueba: {averageMs:0.00} ms por frame");

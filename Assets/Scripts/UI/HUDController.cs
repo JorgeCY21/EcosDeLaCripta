@@ -136,7 +136,8 @@ namespace EcosDeLaCripta.UI
             else if (defeated < 5) objectiveText.text = $"II  GALERÍA DE CUCHILLAS  •  {defeated - 2}/3";
             else if (defeated < 8) objectiveText.text = $"III  OSARIO VERDE  •  {defeated - 5}/3";
             else if (defeated < 11) objectiveText.text = $"IV  SANTUARIO DEL BRUTO  •  {defeated - 8}/3";
-            else objectiveText.text = "V  DERROTA AL GUARDIÁN DE LA CRIPTA";
+            else if (defeated < 12) objectiveText.text = "V  ARENA DE LA TRAYECTORIA  •  0/1";
+            else objectiveText.text = "VI  DERROTA AL GUARDIÁN DE LA CRIPTA";
         }
 
         private void HandleStateChanged(GameState state)

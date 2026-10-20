@@ -10,6 +10,8 @@ namespace EcosDeLaCripta.Combat
         [SerializeField] private float lifetime = 4f;
         private int damage;
         private Rigidbody body;
+        private bool ballistic;
+        private float ballisticGravity;
 
         private void Awake()
         {
@@ -18,10 +20,26 @@ namespace EcosDeLaCripta.Combat
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         }
 
+        private void FixedUpdate()
+        {
+            if (ballistic)
+                body.linearVelocity += Vector3.down * ballisticGravity * Time.fixedDeltaTime;
+        }
+
         public void Launch(Vector3 direction, int amount)
         {
+            ballistic = false;
             damage = amount;
             body.linearVelocity = direction.normalized * speed;
+            Destroy(gameObject, lifetime);
+        }
+
+        public void LaunchBallistic(Vector3 launchVelocity, int amount, float gravity)
+        {
+            ballistic = true;
+            ballisticGravity = Mathf.Max(0.1f, gravity);
+            damage = amount;
+            body.linearVelocity = launchVelocity;
             Destroy(gameObject, lifetime);
         }
 

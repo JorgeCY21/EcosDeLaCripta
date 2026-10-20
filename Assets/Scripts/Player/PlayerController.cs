@@ -59,6 +59,7 @@ namespace EcosDeLaCripta.Player
         private TrailRenderer dashTrail;
 
         public string ActivePowerUpLabel { get; private set; } = "";
+        public Vector3 CurrentVelocity => currentMoveVelocity;
         public float DashCooldown01 => dashCooldown <= 0f ? 1f : 1f - Mathf.Clamp01(dashCooldownTimer / dashCooldown);
         public event System.Action<string> OnPowerUpCollected;
 

@@ -40,6 +40,7 @@ namespace EcosDeLaCripta.EditorTools
 
         private const float CellSize = 1f;
         private const int RoomSize = 11;
+        private const int ArenaRoomSize = 13;
         private const int DoorWidth = 3;
         private const int CorridorLength = 5;
 
@@ -122,7 +123,8 @@ namespace EcosDeLaCripta.EditorTools
             var roomsParent = NewChild(root.transform, "Rooms");
             var propsParent = NewChild(root.transform, "Props");
 
-            // Cinco cámaras con encuentros distintos y descansos breves entre combates.
+            // Seis cámaras: cuatro encuentros, una arena exclusiva para el Guardián de Trayectoria
+            // y la arena final del Guardián de la Cripta.
             Vector2Int room0 = new Vector2Int(0, 0);
             Vector2Int corridor0 = new Vector2Int(RoomSize, (RoomSize - DoorWidth) / 2);
             Vector2Int room1 = new Vector2Int(RoomSize + CorridorLength, 0);
@@ -131,7 +133,9 @@ namespace EcosDeLaCripta.EditorTools
             Vector2Int corridor2 = new Vector2Int(room2.x + RoomSize, (RoomSize - DoorWidth) / 2);
             Vector2Int room3 = new Vector2Int(corridor2.x + CorridorLength, 0);
             Vector2Int corridor3 = new Vector2Int(room3.x + RoomSize, (RoomSize - DoorWidth) / 2);
-            Vector2Int room4 = new Vector2Int(corridor3.x + CorridorLength, 0);
+            Vector2Int room4 = new Vector2Int(corridor3.x + CorridorLength, -1);
+            Vector2Int corridor4 = new Vector2Int(room4.x + ArenaRoomSize, (RoomSize - DoorWidth) / 2);
+            Vector2Int room5 = new Vector2Int(corridor4.x + CorridorLength, -1);
 
             BuildRoomGrid(roomsParent, room0, doorEast: true, doorWest: false);
             BuildCorridorGrid(roomsParent, corridor0);
@@ -141,14 +145,16 @@ namespace EcosDeLaCripta.EditorTools
             BuildCorridorGrid(roomsParent, corridor2);
             BuildRoomGrid(roomsParent, room3, doorEast: true, doorWest: true);
             BuildCorridorGrid(roomsParent, corridor3);
-            BuildRoomGrid(roomsParent, room4, doorEast: false, doorWest: true);
+            BuildRoomGrid(roomsParent, room4, doorEast: true, doorWest: true, width: ArenaRoomSize, height: ArenaRoomSize);
+            BuildCorridorGrid(roomsParent, corridor4);
+            BuildRoomGrid(roomsParent, room5, doorEast: false, doorWest: true, width: ArenaRoomSize, height: ArenaRoomSize);
 
-            float totalWidth = room4.x + RoomSize;
+            float totalWidth = room5.x + ArenaRoomSize;
             GameObject groundGo = new GameObject("GroundCollider");
             groundGo.transform.SetParent(root.transform);
             BoxCollider ground = groundGo.AddComponent<BoxCollider>();
-            ground.size = new Vector3(totalWidth + 4f, 0.2f, RoomSize + 4f);
-            ground.center = new Vector3(totalWidth / 2f, -0.1f, RoomSize / 2f);
+            ground.size = new Vector3(totalWidth + 4f, 0.2f, ArenaRoomSize + 4f);
+            ground.center = new Vector3(totalWidth / 2f, -0.1f, (ArenaRoomSize - 1f) / 2f);
 
             // Antorchas cerca de las esquinas de cada sala.
             PlaceTorch(propsParent, CellToWorld(room0, 1, 1), torchPoleMat, torchFlameMat);
@@ -160,14 +166,17 @@ namespace EcosDeLaCripta.EditorTools
             PlaceTorch(propsParent, CellToWorld(room3, 1, RoomSize - 2), torchPoleMat, torchFlameMat);
             PlaceTorch(propsParent, CellToWorld(room3, RoomSize - 2, 1), torchPoleMat, torchFlameMat);
             PlaceTorch(propsParent, CellToWorld(room4, 1, 1), torchPoleMat, torchFlameMat);
-            PlaceTorch(propsParent, CellToWorld(room4, RoomSize - 2, RoomSize - 2), torchPoleMat, torchFlameMat);
+            PlaceTorch(propsParent, CellToWorld(room4, ArenaRoomSize - 2, ArenaRoomSize - 2), torchPoleMat, torchFlameMat);
+            PlaceTorch(propsParent, CellToWorld(room5, 1, 1), torchPoleMat, torchFlameMat);
+            PlaceTorch(propsParent, CellToWorld(room5, ArenaRoomSize - 2, ArenaRoomSize - 2), torchPoleMat, torchFlameMat);
 
             // Altares luminosos que dan identidad visual y orientan el recorrido.
             BuildRune(propsParent, CellToWorld(room0, 5, 5), cyanRuneMat, new Color(0.1f, 0.75f, 1f), 1.25f);
             BuildRune(propsParent, CellToWorld(room1, 5, 5), runeMat, new Color(1f, 0.12f, 0.03f), 1.55f);
             BuildRune(propsParent, CellToWorld(room2, 5, 5), greenRuneMat, new Color(0.08f, 1f, 0.35f), 1.45f);
             BuildRune(propsParent, CellToWorld(room3, 5, 5), violetRuneMat, new Color(0.62f, 0.12f, 1f), 1.7f);
-            BuildRune(propsParent, CellToWorld(room4, 5, 6), runeMat, new Color(1f, 0.05f, 0.02f), 2.2f);
+            BuildRune(propsParent, CellToWorld(room4, 6, 6), cyanRuneMat, new Color(0.1f, 0.75f, 1f), 2.1f);
+            BuildRune(propsParent, CellToWorld(room5, 6, 7), runeMat, new Color(1f, 0.05f, 0.02f), 2.4f);
 
             // Decoración: barriles, mesa y silla, cofre del tesoro junto al jefe.
             SpawnKenney("barrel", propsParent, CellToWorld(room0, 2, 2));
@@ -188,15 +197,16 @@ namespace EcosDeLaCripta.EditorTools
             SpawnKenney("barrel", propsParent, CellToWorld(room3, 8, 2));
             SpawnKenney("banner", propsParent, CellToWorld(room3, 5, 10));
             SpawnKenney("chest", propsParent, CellToWorld(room3, 5, 2));
-            SpawnKenney("shield-rectangle", propsParent, CellToWorld(room4, 2, 8));
-            SpawnKenney("shield-round", propsParent, CellToWorld(room4, 8, 8));
-            SpawnKenney("weapon-sword", propsParent, CellToWorld(room4, 5, 9));
+            SpawnKenney("shield-rectangle", propsParent, CellToWorld(room5, 2, 9));
+            SpawnKenney("shield-round", propsParent, CellToWorld(room5, 10, 9));
+            SpawnKenney("weapon-sword", propsParent, CellToWorld(room5, 6, 11));
 
             // Sellos de progresión: cada sala debe limpiarse antes de continuar.
             BuildKillGate(root.transform, new Vector3(room0.x + RoomSize - 1, 0f, 5f), 2, runeMat);
             BuildKillGate(root.transform, new Vector3(room1.x + RoomSize - 1, 0f, 5f), 5, runeMat);
             BuildKillGate(root.transform, new Vector3(room2.x + RoomSize - 1, 0f, 5f), 8, greenRuneMat);
             BuildKillGate(root.transform, new Vector3(room3.x + RoomSize - 1, 0f, 5f), 11, violetRuneMat);
+            BuildKillGate(root.transform, new Vector3(room4.x + ArenaRoomSize - 1, 0f, 5f), 12, cyanRuneMat);
 
             // Trampas telegrafiadas: obligan a moverse y usar el impulso.
             BuildSpikeTrap(propsParent, CellToWorld(room1, 4, 4));
@@ -205,8 +215,8 @@ namespace EcosDeLaCripta.EditorTools
             BuildSpikeTrap(propsParent, CellToWorld(room2, 7, 5));
             BuildSpikeTrap(propsParent, CellToWorld(room3, 4, 7));
             BuildSpikeTrap(propsParent, CellToWorld(room3, 6, 3));
-            BuildSpikeTrap(propsParent, CellToWorld(room4, 3, 5));
-            BuildSpikeTrap(propsParent, CellToWorld(room4, 7, 5));
+            BuildSpikeTrap(propsParent, CellToWorld(room5, 3, 6));
+            BuildSpikeTrap(propsParent, CellToWorld(room5, 9, 6));
 
             // ---------- Jugador ----------
             GameObject player = BuildPlayer(root.transform, CellToWorld(room0, 5, 2), kenneyMat);
@@ -265,24 +275,33 @@ namespace EcosDeLaCripta.EditorTools
             acolyteC.ConfigureRanged(enemyBoltPrefab, 7.5f, 4.8f, 1.35f);
             acolyteC.ConfigureAudio(attackClip);
 
-            EnemyAI finalGuardA = BuildEnemy(root.transform, CellToWorld(room4, 3, 7), kenneyMat, enemyAnimCtrl, scale: 1.05f, maxHealth: 5);
+            Transform waypointRoot = NewChild(root.transform, "PredictiveGuardianWaypoints");
+            Transform[] predictiveRoute = BuildWaypoints(waypointRoot, room4);
+            EnemyAI predictiveGuardian = BuildEnemy(root.transform, CellToWorld(room4, 6, 6), bossMat, enemyAnimCtrl, scale: 1.55f, maxHealth: 15);
+            predictiveGuardian.ConfigureVariant(2.15f, 6.5f, 2, 600, 10f, 1.55f);
+            predictiveGuardian.ConfigurePredictiveRanged(enemyBoltPrefab, 10f, 16f, 9.8f, 2.8f);
+            predictiveGuardian.ConfigureWaypoints(predictiveRoute, routeOnly: true);
+            predictiveGuardian.ConfigureArenaBounds(room4.x + 1.5f, room4.x + ArenaRoomSize - 1.5f, room4.y + 1.5f, room4.y + ArenaRoomSize - 1.5f);
+            predictiveGuardian.ConfigureAudio(attackClip);
+
+            EnemyAI finalGuardA = BuildEnemy(root.transform, CellToWorld(room5, 3, 8), kenneyMat, enemyAnimCtrl, scale: 1.05f, maxHealth: 5);
             finalGuardA.ConfigureVariant(2.8f, 6.5f, 1, 175, 8f);
-            finalGuardA.ConfigureArenaBounds(room4.x + 2f, room4.x + 8.7f, 1.25f, 8.75f);
+            finalGuardA.ConfigureArenaBounds(room5.x + 2f, room5.x + 10.7f, room5.y + 1.25f, room5.y + 11.75f);
             finalGuardA.ConfigureAudio(attackClip);
-            EnemyAI finalGuardB = BuildEnemy(root.transform, CellToWorld(room4, 8, 4), bossMat, enemyAnimCtrl, scale: 1f, maxHealth: 4);
+            EnemyAI finalGuardB = BuildEnemy(root.transform, CellToWorld(room5, 10, 5), bossMat, enemyAnimCtrl, scale: 1f, maxHealth: 4);
             finalGuardB.ConfigureVariant(2.25f, 5.2f, 1, 200, 8.5f);
             finalGuardB.ConfigureRanged(enemyBoltPrefab, 8f, 5f, 1.25f);
-            finalGuardB.ConfigureArenaBounds(room4.x + 2f, room4.x + 8.7f, 1.25f, 8.75f);
+            finalGuardB.ConfigureArenaBounds(room5.x + 2f, room5.x + 10.7f, room5.y + 1.25f, room5.y + 11.75f);
             finalGuardB.ConfigureAudio(attackClip);
-            EnemyAI boss = BuildEnemy(root.transform, CellToWorld(room4, 6, 7), bossMat, enemyAnimCtrl, scale: 1.7f, maxHealth: 20);
+            EnemyAI boss = BuildEnemy(root.transform, CellToWorld(room5, 7, 8), bossMat, enemyAnimCtrl, scale: 1.7f, maxHealth: 20);
             boss.ConfigureAsBoss(speed: 2.15f, force: 7f, damage: 2, score: 800, detection: 9f, lose: 11f);
             boss.ConfigureBossSpecial(enemyBoltPrefab);
-            boss.ConfigureArenaBounds(room4.x + 2f, room4.x + 8.4f, 1.5f, 8.5f);
+            boss.ConfigureArenaBounds(room5.x + 2f, room5.x + 11f, room5.y + 1.5f, room5.y + 11.5f);
             boss.ConfigureAudio(attackClip);
 
             GameObject audioDirectorGo = new GameObject("DungeonAudioDirector");
             audioDirectorGo.transform.SetParent(root.transform, false);
-            audioDirectorGo.AddComponent<DungeonAudioDirector>().Configure(player.transform, boss, room4.x + 1.5f, ambientClip, bossMusicClip);
+            audioDirectorGo.AddComponent<DungeonAudioDirector>().Configure(player.transform, boss, room5.x + 1.5f, ambientClip, bossMusicClip);
 
             // ---------- Power-ups ----------
             BuildPowerUp(propsParent, CellToWorld(room0, 8, 8), PowerUpType.Damage, pickupClip);
@@ -292,13 +311,14 @@ namespace EcosDeLaCripta.EditorTools
             BuildPowerUp(propsParent, CellToWorld(room2, 5, 2), PowerUpType.Damage, pickupClip);
             BuildPowerUp(propsParent, CellToWorld(room3, 2, 2), PowerUpType.Speed, pickupClip);
             BuildPowerUp(propsParent, CellToWorld(room4, 2, 2), PowerUpType.Health, pickupClip);
+            BuildPowerUp(propsParent, CellToWorld(room5, 2, 2), PowerUpType.Health, pickupClip);
 
             BuildPostProcessing(root.transform);
 
             GameObject gmGo = new GameObject("GameManager");
             gmGo.transform.SetParent(root.transform);
             GameManager gm = gmGo.AddComponent<GameManager>();
-            gm.SetTotalEnemies(14);
+            gm.SetTotalEnemies(15);
 
             BuildLevelUI(root.transform, player.GetComponent<Health>(), hurtClip);
 
@@ -314,31 +334,50 @@ namespace EcosDeLaCripta.EditorTools
             return new Vector3((roomOrigin.x + localX) * CellSize, 0f, (roomOrigin.y + localZ) * CellSize);
         }
 
-        private static void BuildRoomGrid(Transform parent, Vector2Int origin, bool doorEast, bool doorWest)
+        private static void BuildRoomGrid(Transform parent, Vector2Int origin, bool doorEast, bool doorWest, int width = RoomSize, int height = RoomSize)
         {
             Transform room = NewChild(parent, $"Room_{origin.x}");
-            int doorStart = (RoomSize - DoorWidth) / 2;
+            int doorStart = (height - DoorWidth) / 2;
             int doorEnd = doorStart + DoorWidth - 1;
 
-            for (int cx = 0; cx < RoomSize; cx++)
+            for (int cx = 0; cx < width; cx++)
             {
-                for (int cz = 0; cz < RoomSize; cz++)
+                for (int cz = 0; cz < height; cz++)
                 {
                     Vector3 worldPos = CellToWorld(origin, cx, cz);
                     PlaceFloorTile(room, worldPos);
 
-                    bool isPerimeter = cx == 0 || cx == RoomSize - 1 || cz == 0 || cz == RoomSize - 1;
+                    bool isPerimeter = cx == 0 || cx == width - 1 || cz == 0 || cz == height - 1;
                     if (!isPerimeter) continue;
 
                     bool isDoorRow = cz >= doorStart && cz <= doorEnd;
-                    if (doorEast && cx == RoomSize - 1 && isDoorRow) continue;
+                    if (doorEast && cx == width - 1 && isDoorRow) continue;
                     if (doorWest && cx == 0 && isDoorRow) continue;
 
-                    bool isCorner = (cx == 0 || cx == RoomSize - 1) && (cz == 0 || cz == RoomSize - 1);
+                    bool isCorner = (cx == 0 || cx == width - 1) && (cz == 0 || cz == height - 1);
                     if (isCorner) PlaceColumn(room, worldPos);
                     else PlaceWall(room, worldPos);
                 }
             }
+        }
+
+        private static Transform[] BuildWaypoints(Transform parent, Vector2Int roomOrigin)
+        {
+            Vector2[] localPoints =
+            {
+                new Vector2(2f, 2f), new Vector2(6f, 1.5f), new Vector2(10f, 2f),
+                new Vector2(11f, 6f), new Vector2(10f, 10f), new Vector2(6f, 11f),
+                new Vector2(2f, 10f), new Vector2(1.5f, 6f)
+            };
+            Transform[] result = new Transform[localPoints.Length];
+            for (int i = 0; i < localPoints.Length; i++)
+            {
+                Transform point = NewChild(parent, $"Waypoint_{i + 1:00}");
+                point.position = CellToWorld(roomOrigin, Mathf.RoundToInt(localPoints[i].x), Mathf.RoundToInt(localPoints[i].y));
+                point.position += Vector3.up * 0.05f;
+                result[i] = point;
+            }
+            return result;
         }
 
         private static void BuildCorridorGrid(Transform parent, Vector2Int origin)

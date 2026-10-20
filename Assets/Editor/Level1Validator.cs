@@ -20,11 +20,11 @@ namespace EcosDeLaCripta.EditorTools
             CameraFollow cameraRig = Object.FindFirstObjectByType<CameraFollow>();
             Require(cameraRig != null, "Falta CameraFollow");
             Require(Object.FindFirstObjectByType<HUDController>() != null, "Falta HUDController");
-            Require(Object.FindObjectsByType<EnemyAI>(FindObjectsSortMode.None).Length == 14, "El nivel debe tener 14 enemigos");
-            Require(Object.FindObjectsByType<EnemyHealthBar>(FindObjectsSortMode.None).Length == 14, "Todos los enemigos deben tener barra de vida");
-            Require(Object.FindObjectsByType<KillGate>(FindObjectsSortMode.None).Length == 4, "El nivel debe tener 4 sellos");
+            Require(Object.FindObjectsByType<EnemyAI>(FindObjectsSortMode.None).Length == 15, "El nivel debe tener 15 enemigos");
+            Require(Object.FindObjectsByType<EnemyHealthBar>(FindObjectsSortMode.None).Length == 15, "Todos los enemigos deben tener barra de vida");
+            Require(Object.FindObjectsByType<KillGate>(FindObjectsSortMode.None).Length == 5, "El nivel debe tener 5 sellos");
             Require(Object.FindObjectsByType<SpikeTrap>(FindObjectsSortMode.None).Length == 8, "El nivel debe tener 8 trampas");
-            Require(Object.FindObjectsByType<PowerUp>(FindObjectsSortMode.None).Length == 7, "El nivel debe tener 7 power-ups visibles");
+            Require(Object.FindObjectsByType<PowerUp>(FindObjectsSortMode.None).Length == 8, "El nivel debe tener 8 power-ups visibles");
 
             string[] solidProps = { "barrel", "table", "chair", "chest", "rocks", "stones", "wood-structure", "shield-round", "shield-rectangle", "weapon-sword", "Torch" };
             Transform[] allTransforms = Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
@@ -79,6 +79,30 @@ namespace EcosDeLaCripta.EditorTools
             Require(boss != null, "Falta el jefe final");
             SerializedObject serializedBoss = new SerializedObject(boss);
             Require(serializedBoss.FindProperty("constrainToArena").boolValue, "El jefe puede bloquear la entrada de la arena");
+
+            EnemyAI predictiveGuardian = null;
+            foreach (EnemyAI enemy in Object.FindObjectsByType<EnemyAI>(FindObjectsSortMode.None))
+            {
+                SerializedObject serializedEnemy = new SerializedObject(enemy);
+                if (serializedEnemy.FindProperty("predictiveRanged")?.boolValue == true)
+                {
+                    predictiveGuardian = enemy;
+                    break;
+                }
+            }
+            Require(predictiveGuardian != null, "Falta el guardián con ataque predictivo");
+            Require(predictiveGuardian.transform.parent != null, "El guardián predictivo no tiene una sala válida");
+            Require(predictiveGuardian.transform.parent.name == "Level1", "El guardián predictivo no está en el nivel");
+            bool hasWaypoint = false;
+            foreach (Transform candidate in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+            {
+                if (candidate.name == "Waypoint_01")
+                {
+                    hasWaypoint = true;
+                    break;
+                }
+            }
+            Require(hasWaypoint, "Falta la ruta de waypoints");
 
             EditorSceneManager.OpenScene("Assets/Scenes/MainMenu.unity", OpenSceneMode.Single);
             DungeonAudioDirector menuAudio = Object.FindFirstObjectByType<DungeonAudioDirector>();
